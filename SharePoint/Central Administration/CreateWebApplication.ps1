@@ -1,53 +1,46 @@
-$user_cache_SuperUser_name   = $Env:COMPUTERNAME + "\Username"
-$user_cache_SuperReader_name = $Env:COMPUTERNAME + "\Username"
-$user_apppool_Name           = $Env:COMPUTERNAME + "\Username"
-$user_apppool_password       = "PassWord"
-$intranetWebApp_Name         = "SharePoint - 80"
-$AppPoolName                 = "SharePoint - 80"
-$intranetWebApp_DatabaseName = "SP_Content"
-$intranetWebApp_Port         = "80"
-$intranetWebAppPath          = "C:\inetpub\wwwroot\wss\VirtualDirectories\" + $Env:COMPUTERNAME + $intranetWebApp_Port
-$intranetWebApp_HostHeader   = $Env:COMPUTERNAME
-
-
-$user = [Security.Principal.WindowsIdentity]::GetCurrent();
-if ((New-Object Security.Principal.WindowsPrincipal $user).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator))
-{    
+if ((New-Object Security.Principal.WindowsPrincipal ([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator))
+{
+    $xml = [xml](get-content ((Split-Path -Path $MyInvocation.MyCommand.Definition -Parent) + "\SharePointConfig.xml"))
+    $webApplicationsXml = $xml.SharePointConfig.Farm.WebApplications
 
     Import-Module WebAdministration
     add-pssnapin "Microsoft.SharePoint.PowerShell" -ea "silentlycontinue"
     Start-SPAssignment –Global 
 
-    $null = Get-SPWebApplication "http://$intranetWebApp_HostHeader" -ErrorVariable err -ErrorAction SilentlyContinue
-    if($err)
-    {
-        Write-Host "Creating Web Application '$intranetWebApp_Name'"
-
-        # Retrieve Application Pool Managed Account or create it
-        $ManagedAccount_appPool =  Get-SPManagedAccount $user_apppool_Name -ErrorVariable err -ErrorAction SilentlyContinue
+    $webApplicationsXml.WebApplication.Config | foreach {
+        $webAppUrl = ($_.Protocol + "://" + $_.HostHeader)
+        $null = Get-SPWebApplication $webAppUrl -ErrorVariable err -ErrorAction SilentlyContinue
         if($err)
         {
-        	$ManagedAccount_appPool =  New-SPManagedAccount  (New-Object System.Management.Automation.PSCredential $user_apppool_Name, (ConvertTo-SecureString $user_apppool_Password -AsPlainText -force))
-        }
+            Write-Host "Creating Web Application:" $_.Name
+            
+            # Retrieve Application Pool Managed Account or create it
+            $ApplicationPoolAccount =  Get-SPManagedAccount $_.ApplicationPool.UserName -ErrorVariable err -ErrorAction SilentlyContinue
+            if($err)
+            {
+            	$ApplicationPoolAccount =  New-SPManagedAccount  (New-Object System.Management.Automation.PSCredential $_.ApplicationPool.UserName, (ConvertTo-SecureString $_.ApplicationPool.PassWord -AsPlainText -force))
+            }
 
-        # Create Web Application for MainSite
-        $null = New-SPWebApplication -Name $intranetWebApp_Name -ApplicationPool $AppPoolName -ApplicationPoolAccount $ManagedAccount_appPool -DatabaseName $intranetWebApp_DatabaseName -HostHeader $intranetWebApp_HostHeader -Path $intranetWebAppPath -Port $intranetWebApp_Port
+            # Create Web Application for MainSite
+            $webApp = New-SPWebApplication -Name $_.Name -ApplicationPool $_.ApplicationPool.Name  -ApplicationPoolAccount $ApplicationPoolAccount -DatabaseName $_.DatabaseName -HostHeader $_.HostHeader -Path $_.Path -Port $_.Port
 
-        # Setting caching accounts
-        $intranetWebApp = Get-SPWebApplication "http://$intranetWebApp_HostHeader"
-        $intranetWebApp.Properties["portalsuperuseraccount"] = $user_cache_SuperUser_name
-        $intranetWebApp.Properties["portalsuperreaderaccount"] = $user_cache_SuperReader_name
+            # Setting caching accounts
+            # $webApp = Get-SPWebApplication $webAppUrl
+            $webApp.Properties["portalsuperuseraccount"] = $_.Caching.SuperUserName
+            $webApp.Properties["portalsuperreaderaccount"] = $_.Caching.SuperReaderName
 
-        # Retrieve Policy Roles
-        $intranetPolicyRolFullRead = $intranetWebApp.PolicyRoles | where {$_.Name -eq "Full Read"}
-        $intranetPolicyRolFullControl = $intranetWebApp.PolicyRoles | where {$_.Name -eq "Full Control"}
-        $intranetWebAppPolicySuperUser = $intranetWebApp.Policies.Add($user_cache_SuperUser_name, $user_cache_SuperUser_name)
-        $intranetWebAppPolicySuperUser.PolicyRoleBindings.Add($intranetPolicyRolFullControl)
-        $intranetWebAppPolicySuperReader = $intranetWebApp.Policies.Add($user_cache_SuperReader_name, $user_cache_SuperReader_name)
-        $intranetWebAppPolicySuperReader.PolicyRoleBindings.Add($intranetPolicyRolFullRead)
-        $intranetWebApp.Update()
-    } else {
-    	Write-Host "WebApplication already exists."
+            # Retrieve Policy Roles
+            $policyRolFullRead = $webApp.PolicyRoles | where {$_.Name -eq "Full Read"}
+            $policyRolFullControl = $webApp.PolicyRoles | where {$_.Name -eq "Full Control"}
+            $webAppPolicySuperUser = $webApp.Policies.Add($_.Caching.SuperUserName, $_.Caching.SuperUserName)
+            $webAppPolicySuperUser.PolicyRoleBindings.Add($policyRolFullControl)
+            $webAppPolicySuperReader = $webApp.Policies.Add($_.Caching.SuperReaderName, $_.Caching.SuperReaderName)
+            $webAppPolicySuperReader.PolicyRoleBindings.Add($policyRolFullRead)
+            $webApp.Update()
+
+        } else {
+        	Write-Host "WebApplication already exists:" $_.Name
+        }     
     }
     Stop-SPAssignment –Global 
 } else {

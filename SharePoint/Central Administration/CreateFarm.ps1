@@ -1,30 +1,22 @@
 # Script based on http://blog.falchionconsulting.com/index.php/2009/10/sharepoint-2010-psconfig-and-powershell/
 
-$farmInstallUserName                   = $Env:COMPUTERNAME + "\Username"
-$farmInstallUserPassword               = "PassWord"
-$farmPassphrase                        = "PassWord"
-$farmDatabaseServer                    = $Env:COMPUTERNAME + "\SQLExpress"
-$farmDatabaseName                      = "SP_Farm"
-$farmAdministrationContentDatabaseName = "SP_Farm_Admin"
-$centraladminPort                      = 15555
-$centraladminAuthProvider              = "NTLM"
+if ((New-Object Security.Principal.WindowsPrincipal ([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator))
+{
+    $xml = [xml](get-content ((Split-Path -Path $MyInvocation.MyCommand.Definition -Parent) + "\SharePointConfig.xml"))
+    $farmConfigXml = $xml.SharePointConfig.Farm.Config
 
-
-$user = [Security.Principal.WindowsIdentity]::GetCurrent();
-if ((New-Object Security.Principal.WindowsPrincipal $user).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator))
-{    
     add-pssnapin "Microsoft.SharePoint.PowerShell" -ea "silentlycontinue"
     Start-SPAssignment –Global 
     if (([Microsoft.SharePoint.Administration.SPFarm]::Local) -eq $null) #Only build the farm if we don't currently have a farm created
     {
-    	Write-Host "Creating farm on SQL server $farmDatabaseServer..." -ForegroundColor "DarkGreen"
+    	Write-Host "Creating SharePoint Farm..." -ForegroundColor "DarkGreen"
     	
-    	# Initialise secure credentials       
-    	$farmCredentials = new-object -typename System.Management.Automation.PSCredential -argumentlist $farmInstallUserName,(ConvertTo-SecureString $farmInstallUserPassword –AsPlaintext –Force)
-    	$farmPassphraseSecure = (ConvertTo-SecureString $farmPassphrase –AsPlaintext –Force)
+    	# Initialise secure credentials   
+        $FarmCredentials = new-object -typename System.Management.Automation.PSCredential -argumentlist $farmConfigXml.InstallCredentials.UserName,(ConvertTo-SecureString $farmConfigXml.InstallCredentials.PassWord –AsPlaintext –Force)
+        $Passphrase = (ConvertTo-SecureString $farmConfigXml.Passphrase –AsPlaintext –Force)
 
     	#Creating new farm     
-    	New-SPConfigurationDatabase -DatabaseName $farmDatabaseName -DatabaseServer $farmDatabaseServer -AdministrationContentDatabaseName $farmAdministrationContentDatabaseName -Passphrase $farmPassphraseSecure -FarmCredentials $farmCredentials
+    	New-SPConfigurationDatabase -DatabaseName $farmConfigXml.Database.DatabaseName -DatabaseServer $farmConfigXml.Database.DatabaseServer -AdministrationContentDatabaseName $farmConfigXml.Database.AdministrationContentDatabaseName -Passphrase $Passphrase -FarmCredentials $FarmCredentials
     	   
     	#Verifying farm creation   
     	$spfarm = Get-SPFarm -ErrorAction SilentlyContinue -ErrorVariable err   
@@ -33,23 +25,22 @@ if ((New-Object Security.Principal.WindowsPrincipal $user).IsInRole([Security.Pr
     		throw "Unable to verify farm creation."   
     	}           
     	
-    	#ACLing SharePoint Resources 
+        #ACLing SharePoint Resources 
     	Initialize-SPResourceSecurity     
     	
-    	#Installing Services       
+        #Installing Services       
     	Install-SPService             
-    	
-    	#Installing Features      
-    	Install-SPFeature -AllExistingFeatures  
+        
+        #Installing Features      
+    	$null = Install-SPFeature -AllExistingFeatures  
 
-    	#Asume we need a central admin
-    	#Provisioning Central Administration  
-    	New-SPCentralAdministration -Port $centraladminPort -WindowsAuthProvider $centraladminAuthProvider
+        #Asume we need a central admin, Provisioning Central Administration  
+    	New-SPCentralAdministration -Port $farmConfigXml.CentralAdmin.Port -WindowsAuthProvider $farmConfigXml.CentralAdmin.AuthProvider
 
-    	#Installing Help     
+        #Installing Help     
     	Install-SPHelpCollection -All  
-    	  
-    	#Installing Application Content  
+
+        #Installing Application Content  
     	Install-SPApplicationContent
 
     } else {

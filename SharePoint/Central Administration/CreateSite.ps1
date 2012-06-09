@@ -1,15 +1,32 @@
-add-pssnapin "Microsoft.SharePoint.PowerShell" -ea "silentlycontinue"
+if ((New-Object Security.Principal.WindowsPrincipal ([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator))
+{
+    $xml = [xml](get-content ((Split-Path -Path $MyInvocation.MyCommand.Definition -Parent) + "\SharePointConfig.xml"))
+    $webApplicationsXml = $xml.SharePointConfig.Farm.WebApplications
 
-$intranetWebAppFullURL                    = "http://" + $Env:COMPUTERNAME
-$intranetWebApp_SiteCollectionOwner       = $Env:COMPUTERNAME + "\Username"
-$intranetWebApp_SiteCollectionTitle       = "SharePoint Test Site"
-$intranetWebApp_SiteCollectionTemplate    = "STS#1" # STS#0 = Team Site, STS#1 = Blank Site
-$intranetWebApp_SiteCollectionDescription = "SharePoint Test Site Description"
-$intranetWebApp_SiteCollectionLanguage    = 1033 # 1043 = Dutch
+    add-pssnapin "Microsoft.SharePoint.PowerShell" -ea "silentlycontinue"
 
-Write-Host "CreateSite.ps1" -BackgroundColor "Black" -ForegroundColor "White"
-Write-Host "  Creating Site: $intranetWebAppFullURL" -ForegroundColor "Gray"
-$newSite = New-SPSite $intranetWebAppFullURL -OwnerAlias $intranetWebApp_SiteCollectionOwner -name $intranetWebApp_SiteCollectionTitle -Template $intranetWebApp_SiteCollectionTemplate -Description $intranetWebApp_SiteCollectionDescription -Language $intranetWebApp_SiteCollectionLanguage
-$newSite.Dispose()
-
-
+    foreach ($webApplication in $webApplicationsXml.WebApplication) {
+        $webAppUrl = ($webApplication.Config.Protocol + "://" + $webApplication.Config.HostHeader)
+        $webApp = Get-SPWebApplication $webAppUrl -ErrorVariable err -ErrorAction SilentlyContinue
+        if(-not $err)
+        {
+            foreach($siteColl in $webApplication.SiteCollections.SiteCollection) {
+                $newSite = Get-SPSite $siteColl.Url -ErrorVariable err -ErrorAction SilentlyContinue
+                if($err)
+                {
+                    Write-Host "Creating Site:"$siteColl.Url
+                    $newSite = New-SPSite $siteColl.Url -OwnerAlias $siteColl.OwnerAlias -Name $siteColl.Name -Template $siteColl.Template -Description $siteColl.Description -Language $siteColl.Language
+                }
+                else
+                {
+                    Write-Host "Site already exists:"$siteColl.Url
+                }
+                $newSite.Dispose()
+            }
+        } else {
+            Write-Host "No Web Application found at url:"$webAppUrl
+        }
+    }
+} else {
+	Write-Host "Please run this script as an administrator."
+}

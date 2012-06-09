@@ -1,0 +1,64 @@
+<SharePointConfig>
+  <Farm>
+    <Config>
+      <InstallCredentials>
+        <UserName>VM-Windows7\Administrator</UserName>
+        <PassWord>***</PassWord>
+      </InstallCredentials>
+      <Passphrase>***</Passphrase>
+      <Database>
+        <DatabaseServer>VM-Windows7\SQLExpress</DatabaseServer>
+        <DatabaseName>SP_Farm</DatabaseName>
+        <AdministrationContentDatabaseName>SP_Farm_Admin</AdministrationContentDatabaseName>
+      </Database>
+      <CentralAdmin>
+        <Port>15555</Port>
+        <AuthProvider>NTLM</AuthProvider>
+      </CentralAdmin>
+    </Config>
+
+    <WebApplications>
+      <WebApplication>
+        <Config>
+          <Name>SharePoint - 80</Name>
+          <ApplicationPool>
+            <Name>SharePoint - 80</Name>
+            <UserName>VM-Windows7\Administrator</UserName>
+            <PassWord>***</PassWord>
+          </ApplicationPool>
+          <DatabaseName>SP_Content</DatabaseName>
+          <Protocol>HTTP</Protocol>
+          <HostHeader>VM-Windows7</HostHeader>
+          <Path>C:\inetpub\wwwroot\wss\VirtualDirectories\VM-Windows7-80</Path>
+          <Port>80</Port>
+          <Caching>
+            <SuperUserName>VM-Windows7\Administrator</SuperUserName>
+            <SuperReaderName>VM-Windows7\Administrator</SuperReaderName>
+          </Caching>
+        </Config>
+        
+        <SiteCollections>
+          <SiteCollection>
+            <Url>http://VM-Windows7</Url>
+            <OwnerAlias>VM-Windows7\Administrator</OwnerAlias>
+            <Name>SharePoint Test Site</Name>
+            <Template>STS#1</Template>
+            <Description>SharePoint Test Site Description</Description>
+            <Language>1033</Language>
+          </SiteCollection>
+        </SiteCollections>
+
+      </WebApplication>
+    </WebApplications>
+
+    <Services>
+      <SharePointFoundationSearch>
+        <ServiceAccount></ServiceAccount>
+        <ContentAccessAccount></ContentAccessAccount>
+        <SearchDatabase></SearchDatabase>
+        <FailoverServer></FailoverServer>
+        <IndexingSchedule></IndexingSchedule>
+      </SharePointFoundationSearch>
+    </Services>
+  </Farm>
+</SharePointConfig>
